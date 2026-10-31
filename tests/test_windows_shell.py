@@ -18,7 +18,7 @@ class RelaunchTests(unittest.TestCase):
         self.assertEqual(properties[2], subprocess.list2cmdline([str(python), str(root / 'app/launch.pyw')]))
         self.assertEqual(properties[5], shell.APP_ID)
         self.assertEqual(properties[4], '听桥')
-        self.assertTrue(properties[3].endswith('favicon.ico,0'))
+        self.assertTrue(properties[3].endswith('favicon-round.ico,0'))
         self.assertNotIn('msedge.exe', properties[2])
 
 

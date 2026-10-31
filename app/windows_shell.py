@@ -5,6 +5,7 @@ The relaunch command must start TingQiao, not a generic Edge window.
 """
 import contextlib
 import ctypes as C
+import os
 from pathlib import Path
 import subprocess
 import sys
@@ -120,7 +121,7 @@ def _read_string(store, pid, ole):
 def relaunch_properties(root, python):
     root = Path(root)
     return {2: subprocess.list2cmdline([str(python), str(root / 'app/launch.pyw')]),
-            3: str(root / 'app/static/favicon.ico') + ',0', 4: APP_TITLE, 5: APP_ID}
+            3: str(root / 'app/static/favicon-round.ico') + ',0', 4: APP_TITLE, 5: APP_ID}
 
 
 def set_window_identity(hwnd, root, python):
@@ -155,7 +156,7 @@ def write_shortcut(path, root, python):
         try:
             for index, text in ((20, str(python)), (11, subprocess.list2cmdline([str(root / 'app/launch.pyw')])), (9, str(root)), (7, APP_TITLE)):
                 _check(_method(link, index, C.c_long, C.c_wchar_p)(link, text))
-            _check(_method(link, 17, C.c_long, C.c_wchar_p, C.c_int)(link, str(root / 'app/static/favicon.ico'), 0))
+            _check(_method(link, 17, C.c_long, C.c_wchar_p, C.c_int)(link, str(root / 'app/static/favicon-round.ico'), 0))
             store = _query(link, IID_STORE)
             _set_string(store, 5, APP_ID)
             _check(_method(store, 7, C.c_long)(store))
@@ -205,6 +206,16 @@ def prepare_shortcuts(root, python):
     desktop = _known_folder('b4bfcc3a-db2c-424c-b029-7fe99a87c641') / '听桥.lnk'
     if desktop.exists():
         write_shortcut(desktop, root, python)
+    # Keep existing TingQiao pins on the current icon, without changing layout
+    # or touching shortcuts belonging to browsers or other applications.
+    if os.environ.get('APPDATA'):
+        pins = Path(os.environ['APPDATA']) / 'Microsoft/Internet Explorer/Quick Launch/User Pinned/TaskBar'
+        for path in pins.glob('*.lnk'):
+            try:
+                if read_shortcut_identity(path) == APP_ID:
+                    write_shortcut(path, root, python)
+            except OSError:
+                continue
 
 
 def app_windows():
