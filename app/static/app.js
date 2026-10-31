@@ -36,7 +36,7 @@ const clock=s=>{s=Math.max(0,Math.floor(Number(s)||0));return s>=3600?`${Math.fl
 const duration=s=>s>=3600?`${Math.floor(s/3600)} 小时 ${Math.round(s%3600/60)} 分钟`:s>=60?`${Math.floor(s/60)} 分 ${Math.round(s%60)} 秒`:`${Math.round(s||0)} 秒`;
 const bytes=n=>n>=1024**3?`${(n/1024**3).toFixed(1)} GB`:`${(n/1024**2).toFixed(1)} MB`;
 const date=s=>new Intl.DateTimeFormat('zh-CN',{month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit',hour12:false}).format(new Date(s));
-const S={view:'home',id:null,config:null,items:[],counts:{},template:'meeting',profile:'ark',detail:null,tab:'analysis',search:'',filter:'all',editing:false,transcriptQuery:'',profileDrafts:[],selectedProfile:'ark',version:null,uploading:false,busy:false};
+const S={view:'home',id:null,config:null,items:[],counts:{},template:'meeting',profile:'ark',detail:null,tab:'analysis',search:'',filter:'all',editing:false,transcriptQuery:'',profileDrafts:[],selectedProfile:'ark',version:null,uploading:false,busy:false,batchMode:false,selected:new Set(),batchDownloading:false};
 let pollTimer=null,searchTimer=null,dragCount=0,audioId=null,uploadPercent=0,uploadName='';
 const api=async(url,options={})=>{
  const r=await fetch(url,{...options,headers:options.body?{'Content-Type':'application/json',...options.headers}:options.headers});
@@ -55,14 +55,15 @@ function sidebar(){
  <button class="nav-button ${S.view==='home'?'active':''}" data-nav="home" title="开始分析">${icon('upload')}<span>开始分析</span></button>
  <button class="nav-button ${['archive','detail'].includes(S.view)?'active':''}" data-nav="archive" title="录音档案">${icon('folder')}<span>录音档案</span><span class="count" id="archive-count">${S.counts.total||0}</span></button>
  <div class="sidebar-divider"></div><button class="nav-button ${S.view==='models'?'active':''}" data-nav="models" title="模型连接">${icon('plug')}<span>模型连接</span></button></nav>
- <div class="sidebar-bottom"><div class="ready-line"><i class="dot"></i>本地转写已就绪</div><p>录音留在本机<br>把重要的内容，清晰留下。</p></div><div class="sidebar-foot"><span>LOCAL FIRST</span><span>v1.0</span></div>`;
+ <div class="sidebar-bottom"><div class="ready-line"><i class="dot"></i>本地转写已就绪</div><p>录音留在本机<br>把重要的内容，清晰留下。</p></div><div class="sidebar-foot"><span>LOCAL FIRST</span><span>v1.2</span></div>`;
 }
 function themeButton(){const dark=window.TingqiaoTheme.current()==='dark',label=dark?'日间模式':'夜间模式';return `<button class="theme-toggle" data-action="toggle-theme" title="切换到${label}" aria-label="切换到${label}" aria-pressed="${dark}">${icon(dark?'sun':'moon')}<span>${label}</span></button>`;}
 document.addEventListener('tingqiao-theme-change',()=>{$$('[data-action="toggle-theme"]').forEach(button=>button.outerHTML=themeButton());});
 function topbar(label){const p=S.config.profiles.find(p=>p.id===S.profile)||S.config.profiles[0];return `<div class="topbar"><div class="breadcrumb">听桥 <span>/</span> <b>${label}</b></div><div class="top-actions"><button class="search-shortcut" data-action="search">${icon('search')}<span>搜索录音</span><kbd>Ctrl K</kbd></button>${themeButton()}<button class="model-chip" data-nav="models" title="更换分析模型"><i class="dot"></i>${esc(p.name)}</button></div></div>`;}
 function recordRows(items){
  if(!items.length)return `<div class="empty-state">${icon('wave')}<strong>${S.search?'没有找到匹配的录音':'这里会留下你的每一次思考'}</strong><p>${S.search?'试试其他标题或内容关键词':'上传第一段录音，识别和分析结果会自动保存在这里。'}</p></div>`;
- return items.map(r=>`<article class="record-row" data-record="${r.id}" tabindex="0" role="button" aria-label="打开 ${esc(r.title)}"><div class="file-icon">${icon('wave')}<span>${esc(r.original_name.split('.').at(-1).toUpperCase().slice(0,5))}</span></div><div class="record-meta"><div class="record-title">${esc(r.title)}</div><div class="record-sub"><span>${date(r.created_at)}</span><span>·</span><span>${r.duration?duration(r.duration):bytes(r.size)}</span><span class="tag">${templateNames[r.template]||'录音分析'}</span></div></div><div class="record-state">${statusHTML(r)}<small>${esc(active(r)?r.message:r.analysis_model||'本地存档')}</small></div><span class="row-arrow">${icon('chevron')}</span></article>`).join('');
+ const selecting=S.view==='archive'&&S.batchMode;
+ return items.map(r=>`<article class="record-row ${selecting&&S.selected.has(r.id)?'record-selected':''} ${selecting&&!r.has_analysis?'batch-disabled':''}" data-record="${r.id}" tabindex="${selecting?-1:0}" role="${selecting?'group':'button'}" aria-label="${selecting?'选择':'打开'} ${esc(r.title)}">${selecting?`<label class="record-select" title="${r.has_analysis?'选择这份分析文档':'尚未生成分析，暂不能下载'}"><input type="checkbox" data-select-record="${r.id}" aria-label="选择 ${esc(r.title)}" ${S.selected.has(r.id)?'checked':''} ${!r.has_analysis||S.batchDownloading?'disabled':''}></label>`:''}<div class="file-icon">${icon('wave')}<span>${esc(r.original_name.split('.').at(-1).toUpperCase().slice(0,5))}</span></div><div class="record-meta"><div class="record-title">${esc(r.title)}</div><div class="record-sub"><span>${date(r.created_at)}</span><span>·</span><span>${r.duration?duration(r.duration):bytes(r.size)}</span><span class="tag">${templateNames[r.template]||'录音分析'}</span></div></div><div class="record-state">${statusHTML(r)}<small>${esc(active(r)?r.message:r.analysis_model||'本地存档')}</small></div><span class="row-arrow">${icon('chevron')}</span></article>`).join('');
 }
 function home(){
  $('#main').innerHTML=topbar('开始分析')+`<section class="hero"><div><div class="eyebrow">声音有迹，思考有桥</div><h1>从一段录音，到一份清晰的记录。</h1><p>拖入录音，听桥会完成转写、分析和归档。</p></div><div class="hero-mark" aria-hidden="true">${'<i></i>'.repeat(7)}</div></section>
@@ -74,7 +75,52 @@ function home(){
  renderUploadStatus();
 }
 function archive(){
- $('#main').innerHTML=topbar('录音档案')+`<div class="page-title"><h1>录音档案</h1><p>声音、文字与分析，都在这里。</p></div><div class="archive-tools"><div class="search-input">${icon('search')}<input id="archive-search" type="search" placeholder="搜索标题、转写内容或分析…" value="${esc(S.search)}" autocomplete="off"></div><div class="segment">${[['all','全部录音'],['processing','处理中'],['ready','已完成'],['error','待重试']].map(([id,label])=>`<button data-filter="${id}" class="${S.filter===id?'active':''}">${label}</button>`).join('')}</div></div><div class="record-list" id="archive-records">${recordRows(S.items)}</div><div class="page-footer">录音档案保存在这台电脑 · 不会自动上传原始音频</div>`;
+ $('#main').innerHTML=topbar('录音档案')+`<div class="page-title"><h1>录音档案</h1><p>声音、文字与分析，都在这里。</p></div><div class="archive-tools"><div class="search-input">${icon('search')}<input id="archive-search" type="search" placeholder="搜索标题、转写内容或分析…" value="${esc(S.search)}" autocomplete="off"></div><div class="archive-actions"><button class="btn btn-secondary" data-action="${S.batchMode?'batch-cancel':'batch-start'}" ${S.batchDownloading?'disabled':''}>${icon(S.batchMode?'close':'download')}${S.batchMode?'取消选择':'批量下载'}</button><div class="segment">${[['all','全部录音'],['processing','处理中'],['ready','已完成'],['error','待重试']].map(([id,label])=>`<button data-filter="${id}" class="${S.filter===id?'active':''}">${label}</button>`).join('')}</div></div></div><div class="batch-toolbar ${S.batchMode?'':'hidden'}" id="batch-toolbar"><label class="batch-select-all"><input type="checkbox" id="batch-select-all">全选当前结果</label><span id="batch-count" aria-live="polite"></span><button class="text-link" data-action="batch-clear">清空选择</button><span class="batch-hint" id="batch-hint"></span><button class="btn btn-primary" id="batch-download" data-action="batch-download">${icon('download')}下载 ZIP</button></div><div class="record-list" id="archive-records">${recordRows(S.items)}</div><div class="page-footer">录音档案保存在这台电脑 · 不会自动上传原始音频</div>`;
+ updateBatchControls();
+}
+const MAX_BATCH_EXPORT=200;
+function updateBatchControls(){
+ if(S.view!=='archive'||!$('#batch-toolbar'))return;
+ const available=S.items.filter(r=>r.has_analysis),selected=available.filter(r=>S.selected.has(r.id));
+ const all=$('#batch-select-all');all.checked=available.length>0&&selected.length===available.length;all.indeterminate=selected.length>0&&selected.length<available.length;all.disabled=S.batchDownloading||!available.length;
+ $('#batch-count').textContent=`已选 ${S.selected.size} 份`;
+ const hidden=S.selected.size-selected.length;$('#batch-hint').textContent=hidden?`当前筛选外还选有 ${hidden} 份`:'仅包含分析文档（Markdown）';
+ const button=$('#batch-download');button.disabled=S.batchDownloading||!S.selected.size;button.innerHTML=S.batchDownloading?'<i class="spinner"></i>正在打包…':icon('download')+`下载 ZIP${S.selected.size?`（${S.selected.size}）`:''}`;
+ const clear=$('[data-action="batch-clear"]');if(clear)clear.disabled=S.batchDownloading||!S.selected.size;
+ const cancel=$('[data-action="batch-cancel"]');if(cancel)cancel.disabled=S.batchDownloading;
+ $$('[data-select-record]').forEach(input=>{const r=S.items.find(r=>r.id===input.dataset.selectRecord);input.checked=S.selected.has(input.dataset.selectRecord);input.disabled=S.batchDownloading||!r?.has_analysis;input.closest('[data-record]').classList.toggle('record-selected',input.checked);});
+}
+function selectBatchRecord(id,checked){
+ if(S.batchDownloading)return;
+ const record=S.items.find(r=>r.id===id);if(!record?.has_analysis)return;
+ if(checked&&S.selected.size>=MAX_BATCH_EXPORT&&!S.selected.has(id)){toast('单次最多下载 200 份分析，请分批选择');updateBatchControls();return;}
+ checked?S.selected.add(id):S.selected.delete(id);updateBatchControls();
+}
+function selectVisibleBatch(checked){
+ if(S.batchDownloading)return;
+ let limited=false;
+ S.items.filter(r=>r.has_analysis).forEach(r=>{if(!checked)S.selected.delete(r.id);else if(S.selected.size<MAX_BATCH_EXPORT||S.selected.has(r.id))S.selected.add(r.id);else limited=true;});
+ if(limited)toast('单次最多下载 200 份分析，请分批选择');updateBatchControls();
+}
+function refreshArchiveRows(){
+ if(S.view!=='archive'||!$('#archive-records'))return;
+ const focused=document.activeElement?.dataset.selectRecord;
+ $('#archive-records').innerHTML=recordRows(S.items);updateBatchControls();
+ if(focused)$$('[data-select-record]').find(input=>input.dataset.selectRecord===focused)?.focus({preventScroll:true});
+}
+async function downloadBatch(){
+ if(S.batchDownloading||!S.selected.size)return;
+ const ids=[...S.selected];S.batchDownloading=true;updateBatchControls();
+ try{
+  const response=await fetch('/api/recordings/batch-export',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({ids})});
+  if(!response.ok){let message='批量下载失败，请稍后重试';try{const error=await response.json();if(typeof error.detail==='string')message=error.detail;}catch{}throw Error(message);}
+  if(!response.headers.get('content-type')?.includes('application/zip'))throw Error('未能生成 ZIP 文件，请刷新后重试');
+  const blob=await response.blob();let filename='听桥-分析文档.zip';
+  const name=response.headers.get('content-disposition')?.match(/filename\*=UTF-8''([^;]+)/i);if(name){try{filename=decodeURIComponent(name[1]);}catch{}}
+  const url=URL.createObjectURL(blob),link=document.createElement('a');link.href=url;link.download=filename;link.hidden=true;document.body.appendChild(link);link.click();link.remove();setTimeout(()=>URL.revokeObjectURL(url),60000);
+  toast(`已生成 ${ids.length} 份分析文档的 ZIP`);
+ }catch(error){toast(error.message,true);}
+ finally{S.batchDownloading=false;updateBatchControls();}
 }
 function inlineMD(text){
  let s=esc(text);
@@ -144,6 +190,7 @@ async function fetchList(){const params=new URLSearchParams();if(S.view==='archi
 async function route(){
  const hash=location.hash.replace(/^#\/?/,'');const match=hash.match(/^record\/([a-f0-9]{32})$/);
  const previous=S.view;S.view=match?'detail':['archive','models'].includes(hash)?hash:'home';S.id=match?match[1]:null;S.version=null;S.editing=false;
+ if(S.view!=='archive'){S.batchMode=false;S.selected.clear();}
  if(S.view==='models'&&previous!=='models')S.profileDrafts=structuredClone(S.config.profiles);
  if(S.view==='detail'){
   try{const r=await api('/api/recordings/'+S.id);if(S.id!==r.id)return;S.detail=r;S.tab='analysis';S.transcriptQuery='';}catch(e){toast(e.message,true);go('archive');return;}
@@ -166,7 +213,7 @@ async function tick(){
     setupPlayer(r);
    }
   }else if(view==='home'&&!S.uploading){home();}
-  else if(view==='archive'){$('#archive-records').innerHTML=recordRows(S.items);}
+  else if(view==='archive'){refreshArchiveRows();}
  }catch(e){console.warn('刷新暂不可用');}
  finally{pollTimer=setTimeout(tick,S.counts.processing?1500:5000);}
 }
@@ -201,7 +248,8 @@ async function reanalyze(){const r=S.detail,profile=$('#detail-profile').value,t
 async function saveTranscript(){const r=S.detail,segments=structuredClone(r.transcript);$$('textarea[data-transcript-index]').forEach(n=>segments[Number(n.dataset.transcriptIndex)].text=n.value);S.detail=await api('/api/recordings/'+r.id,{method:'PATCH',body:JSON.stringify({transcript:segments})});S.editing=false;detail();toast('校对已保存，可重新分析以更新结果');}
 document.addEventListener('click',async e=>{
  const nav=e.target.closest('[data-nav]');if(nav){go(nav.dataset.nav);return;}
- const record=e.target.closest('[data-record]');if(record){go('detail',record.dataset.record);return;}
+ const selection=e.target.closest('.record-select');if(selection)return;
+ const record=e.target.closest('[data-record]');if(record){if(S.view==='archive'&&S.batchMode){const item=S.items.find(r=>r.id===record.dataset.record);if(!item?.has_analysis){toast('这段录音尚未生成分析，暂不能下载');return;}selectBatchRecord(item.id,!S.selected.has(item.id));}else go('detail',record.dataset.record);return;}
  const template=e.target.closest('[data-template]');if(template){S.template=template.dataset.template;home();return;}
  const filter=e.target.closest('[data-filter]');if(filter){S.filter=filter.dataset.filter;await fetchList();archive();return;}
  const tab=e.target.closest('[data-tab]');if(tab){if(S.editing){toast('请先保存或取消校对');return;}S.tab=tab.dataset.tab;detail();return;}
@@ -210,6 +258,10 @@ document.addEventListener('click',async e=>{
  const button=e.target.closest('[data-action]');if(!button)return;
  try{
   switch(button.dataset.action){
+   case 'batch-start':S.batchMode=true;S.selected.clear();archive();break;
+   case 'batch-cancel':if(!S.batchDownloading){S.batchMode=false;S.selected.clear();archive();}break;
+   case 'batch-clear':if(!S.batchDownloading){S.selected.clear();updateBatchControls();}break;
+   case 'batch-download':await downloadBatch();break;
    case 'toggle-theme':window.TingqiaoTheme.toggle();break;
    case 'pick':$('#file-picker').click();break;
    case 'search':S.search='';S.filter='all';if(S.view!=='archive'){go('archive');setTimeout(()=>$('#archive-search')?.focus(),150);}else $('#archive-search').focus();break;
@@ -230,15 +282,17 @@ document.addEventListener('click',async e=>{
 });
 document.addEventListener('submit',async e=>{if(e.target.id==='model-form'){e.preventDefault();try{await saveProfiles();}catch(err){toast(err.message,true);}}});
 document.addEventListener('input',e=>{
- if(e.target.id==='archive-search'){S.search=e.target.value;clearTimeout(searchTimer);searchTimer=setTimeout(async()=>{await fetchList();if(S.view==='archive')$('#archive-records').innerHTML=recordRows(S.items);},250);}
+ if(e.target.id==='archive-search'){S.search=e.target.value;clearTimeout(searchTimer);searchTimer=setTimeout(async()=>{await fetchList();if(S.view==='archive')refreshArchiveRows();},250);}
  if(e.target.id==='transcript-search'){S.transcriptQuery=e.target.value;const selection=e.target.selectionStart;$('#detail-content').innerHTML=transcriptContent(S.detail);const input=$('#transcript-search');input.focus();input.setSelectionRange(selection,selection);}
 });
 document.addEventListener('change',async e=>{
+ if(e.target.matches('[data-select-record]')){selectBatchRecord(e.target.dataset.selectRecord,e.target.checked);return;}
+ if(e.target.id==='batch-select-all'){selectVisibleBatch(e.target.checked);return;}
  if(e.target.id==='home-profile')S.profile=e.target.value;
  if(e.target.id==='version-select'){try{S.version=e.target.value?await api(`/api/recordings/${S.id}/versions/${e.target.value}`):null;$('#detail-content').innerHTML=analysisContent(S.detail);}catch(err){toast(err.message,true);}}
 });
 document.addEventListener('focusout',async e=>{if(e.target.id==='record-title'&&S.detail&&e.target.value.trim()!==S.detail.title){try{S.detail=await api('/api/recordings/'+S.id,{method:'PATCH',body:JSON.stringify({title:e.target.value})});$('#player-name').textContent=S.detail.title;toast('标题已保存');}catch(err){toast(err.message,true);e.target.value=S.detail.title;}}});
-document.addEventListener('keydown',e=>{if((e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==='k'){e.preventDefault();const b=$('[data-action=search]');b?.click();}if(e.key==='Escape'){$('#modal-root').innerHTML='';$('#export-menu')?.classList.add('hidden');}if(e.key==='Enter'&&e.target.matches('[data-record]'))go('detail',e.target.dataset.record);if(e.key==='Enter'&&e.target.id==='record-title')e.target.blur();});
+document.addEventListener('keydown',e=>{if((e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==='k'){e.preventDefault();const b=$('[data-action=search]');b?.click();}if(e.key==='Escape'){$('#modal-root').innerHTML='';$('#export-menu')?.classList.add('hidden');}if(e.key==='Enter'&&!S.batchMode&&e.target.matches('[data-record]'))go('detail',e.target.dataset.record);if(e.key==='Enter'&&e.target.id==='record-title')e.target.blur();});
 $('#file-picker').addEventListener('change',e=>uploadFiles([...e.target.files]));
 window.addEventListener('dragenter',e=>{if([...e.dataTransfer.types].includes('Files')){e.preventDefault();dragCount++;$('#drag-overlay').classList.remove('hidden');}});
 window.addEventListener('dragover',e=>{if([...e.dataTransfer.types].includes('Files')){e.preventDefault();e.dataTransfer.dropEffect='copy';}});

@@ -1,0 +1,13 @@
+.archive-actions{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-left:auto}
+.batch-toolbar{display:flex;align-items:center;gap:14px;flex-wrap:wrap;padding:14px 17px;margin-bottom:16px;background:var(--paper);border:1px solid var(--line);border-radius:12px;font-size:12px}
+.batch-select-all{display:inline-flex;align-items:center;gap:8px;cursor:pointer;white-space:nowrap}
+.batch-toolbar input,.record-select input{width:16px;height:16px;margin:0;accent-color:var(--accent);cursor:pointer;flex-shrink:0}
+.batch-toolbar input:disabled,.record-select input:disabled{cursor:not-allowed}
+#batch-count{white-space:nowrap;font-variant-numeric:tabular-nums}
+.batch-hint{margin-left:auto;color:var(--muted);font-size:10px}
+.batch-toolbar .text-link{font-size:11px;white-space:nowrap}
+.record-select{display:flex;align-items:center;justify-content:center;min-width:26px;min-height:32px;flex-shrink:0;cursor:pointer}
+.record-row.record-selected{background:var(--accent-soft)}
+.record-row.batch-disabled .record-meta,.record-row.batch-disabled .file-icon{opacity:.55}
+:root[data-theme="dark"] .record-row.record-selected{background:#2b2b2b}
+@media(max-width:600px){.archive-actions{width:100%;gap:10px}.archive-actions>.segment{width:100%}.batch-toolbar{gap:12px;padding:13px}.batch-hint{order:2;margin-left:0;width:100%;line-height:1.7}.batch-toolbar #batch-download{order:3;width:100%}.record-select{min-width:20px}}

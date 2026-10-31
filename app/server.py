@@ -28,6 +28,7 @@ os.environ['PYTHONIOENCODING'] = 'utf-8'
 from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile
 from fastapi.responses import FileResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
+from batch_export import validate_record_ids, make_analysis_zip
 from platform_support import protect_secret, unprotect_secret, forget_secret, server_lock
 
 DATA = ROOT / 'data'
@@ -193,6 +194,7 @@ def public_record(row, detail=True):
     r = dict(row)
     r['analysis'] = clean_analysis(r.get('analysis'))
     r['draft'] = clean_analysis(r.get('draft'))
+    r['has_analysis'] = bool(r['analysis'].strip())
     r.pop('file_name', None)
     r['timings'] = json.loads(r.get('timings') or '{}')
     r['transcription_complete'] = bool(r['timings'].get('transcription'))
@@ -496,7 +498,7 @@ async def local_only(request: Request, call_next):
 
 @app.get('/api/health')
 def health():
-    return {'app':'听桥','version':'1.1.0','local_asr_ready':(ROOT/'models/sensevoice/model.int8.onnx').exists(),'platform':sys.platform}
+    return {'app':'听桥','version':'1.2.0','local_asr_ready':(ROOT/'models/sensevoice/model.int8.onnx').exists(),'platform':sys.platform}
 
 @app.get('/api/config')
 def get_config():
@@ -685,6 +687,29 @@ def audio_file(rid: str):
     if not path.exists():path=folder/row['file_name']
     if not path.exists():raise HTTPException(404,'录音文件不存在')
     return FileResponse(path,media_type=mimetypes.guess_type(path.name)[0] or 'application/octet-stream')
+
+@app.post('/api/recordings/batch-export')
+async def batch_export_recordings(request: Request):
+    try:
+        body = await request.json()
+        ids = validate_record_ids(body.get('ids') if isinstance(body, dict) else None)
+    except (ValueError, TypeError) as exc:
+        raise HTTPException(400, str(exc) if isinstance(exc, ValueError) else '下载请求无效') from None
+    with db() as con:
+        rows = con.execute('SELECT id,title,analysis FROM recordings WHERE id IN (' + ','.join('?' for _ in ids) + ')', ids).fetchall()
+    found = {row['id']: dict(row) for row in rows}
+    if len(found) != len(ids):
+        raise HTTPException(404, '部分录音已被移除，请刷新档案后重新选择')
+    documents = [found[rid] | {'analysis': clean_analysis(found[rid]['analysis'])} for rid in ids]
+    try:
+        content = await asyncio.to_thread(make_analysis_zip, documents)
+    except ValueError as exc:
+        raise HTTPException(400, str(exc)) from None
+    filename = '听桥-分析文档-' + datetime.now().strftime('%Y%m%d-%H%M%S') + '.zip'
+    return Response(content, media_type='application/zip', headers={
+        'Content-Disposition': "attachment; filename=tingqiao-analysis.zip; filename*=UTF-8''" + urllib.parse.quote(filename),
+        'Cache-Control': 'no-store',
+    })
 
 @app.get('/api/recordings/{rid}/export')
 def export_recording(rid: str, format: str='md'):
