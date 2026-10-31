@@ -23,6 +23,11 @@ jobs:
       - name: Check shell entrypoints
         if: runner.os == 'macOS'
         run: |
-          bash -n setup.sh setup.command 启动听桥.command
+          for script in setup.sh setup.command 启动听桥.command; do bash -n "$script"; done
       - name: Backend and ASR dependency smoke check
         run: python scripts/smoke_test.py
+      - name: Transcribe upstream public sample on macOS
+        if: runner.os == 'macOS'
+        run: |
+          python scripts/download_model.py
+          python scripts/smoke_test.py --asr

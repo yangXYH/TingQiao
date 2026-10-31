@@ -4,6 +4,7 @@ import json
 from pathlib import Path
 import sys
 import tempfile
+import tarfile
 from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -41,6 +42,35 @@ def main():
                 asyncio.run(server.set_config(Request()))
             assert json.loads(config_file.read_text('utf-8'))['profiles'][0]['secret'] == 'keychain:test-reference'
     print('PASS: backend, credential configuration, local VAD and platform ASR dependencies')
+    if '--asr' in sys.argv:
+        check_asr()
+
+
+def check_asr():
+    # Use the upstream public sample, never a user's recording or cloud model.
+    from download_model import MODEL
+    archive = ROOT / '.cache/models' / f'{MODEL}.tar.bz2'
+    with tempfile.TemporaryDirectory() as temp:
+        data = Path(temp)
+        recordings = data / 'recordings'
+        rid = 'public-sample'
+        folder = recordings / rid
+        folder.mkdir(parents=True)
+        with tarfile.open(archive, 'r:bz2') as bundle:
+            member = bundle.getmember(f'{MODEL}/test_wavs/zh.wav')
+            with bundle.extractfile(member) as sample:
+                (folder / 'sample.wav').write_bytes(sample.read())
+        with patch.object(server, 'DB', data / 'archive.sqlite3'), patch.object(server, 'RECORDINGS', recordings), patch.object(server, 'ASR', None):
+            server.initialize_db()
+            with server.db() as con:
+                con.execute('INSERT INTO recordings(id,title,original_name,file_name,size,created_at,updated_at,status) VALUES(?,?,?,?,?,?,?,?)',
+                            (rid, 'Public test', 'sample.wav', 'sample.wav', (folder / 'sample.wav').stat().st_size, server.now(), server.now(), 'transcribing'))
+            server.transcribe(rid)
+            row = server.record_row(rid)
+            assert json.loads(row['transcript']), 'No text recognized from the public sample'
+            assert json.loads(row['timings'])['transcription'] > 0
+            assert (folder / 'preview.wav').is_file()
+    print('PASS: real local ASR pipeline on upstream public audio (no API credentials)')
 
 
 if __name__ == '__main__':
