@@ -1,0 +1,9 @@
+# Versions used by the Windows / Python 3.12 installation.
+fastapi==0.162.0
+uvicorn==0.54.0
+python-multipart==0.0.32
+sherpa-onnx==2.0.1
+faster-whisper==1.2.1
+av==19.0.2
+numpy==2.5.4
+onnxruntime==1.31.1

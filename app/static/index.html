@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="theme-color" content="#f6f5f1">
+  <title>听桥 · 录音识别与分析</title>
+  <link rel="icon" href="/static/icon.svg" type="image/svg+xml">
+  <script src="/static/theme.js?v=2"></script>
+  <link rel="stylesheet" href="/static/style.css?v=night-1">
+  <link rel="stylesheet" href="/static/theme.css?v=2">
+  <script src="/static/app.js?v=night-1" defer></script>
+</head>
+<body>
+  <aside id="sidebar"></aside>
+  <main id="main"><div class="initial-loading">听桥正在打开你的录音档案…</div></main>
+  <div id="player" class="player hidden">
+    <audio id="audio" preload="metadata"></audio>
+    <button id="play-toggle" class="play-toggle" aria-label="播放录音"></button>
+    <div class="player-info"><strong id="player-name">录音回放</strong><span id="player-time">00:00 / 00:00</span></div>
+    <input id="seek" type="range" value="0" min="0" max="1000" aria-label="播放进度">
+    <button id="speed" class="speed" title="播放速度">1×</button>
+  </div>
+  <div id="drag-overlay" class="drag-overlay hidden"><div><span class="drop-symbol">↓</span><h2>松开，交给听桥</h2><p>录音会自动转写、分析并存档</p></div></div>
+  <input id="file-picker" type="file" accept=".m4a,.mp3,.wav,.flac,.ogg,.aac,.mp4,.webm,.opus,.wma,.amr,.aiff,.aif" multiple hidden>
+  <div id="toasts" class="toasts" aria-live="polite"></div>
+  <div id="modal-root"></div>
+</body>
+</html>
