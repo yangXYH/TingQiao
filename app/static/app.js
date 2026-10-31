@@ -50,7 +50,7 @@ function statusHTML(r){return `<span class="status ${esc(r.status)}"><i class="d
 function profileOptions(selected){return S.config.profiles.map(p=>`<option value="${esc(p.id)}" ${p.id===selected?'selected':''}>${esc(p.name)} · ${esc(p.model)}</option>`).join('');}
 function templateOptions(selected){return Object.entries(templateNames).map(([id,label])=>`<option value="${id}" ${id===selected?'selected':''}>${label}</option>`).join('');}
 function sidebar(){
- $('#sidebar').innerHTML=`<div class="brand"><img src="/static/icon.svg" alt="听桥"><div><div class="brand-name">听桥</div><small>TINGQIAO</small></div></div>
+ $('#sidebar').innerHTML=`<div class="brand"><img src="/static/logo.png?v=1" alt="听桥"><div><div class="brand-name">听桥</div><small>TINGQIAO</small></div></div>
  <div class="nav-label">你的声音工作台</div><nav class="nav" aria-label="主导航">
  <button class="nav-button ${S.view==='home'?'active':''}" data-nav="home" title="开始分析">${icon('upload')}<span>开始分析</span></button>
  <button class="nav-button ${['archive','detail'].includes(S.view)?'active':''}" data-nav="archive" title="录音档案">${icon('folder')}<span>录音档案</span><span class="count" id="archive-count">${S.counts.total||0}</span></button>
