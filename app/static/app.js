@@ -1,6 +1,7 @@
 'use strict';
 const $ = (s,r=document)=>r.querySelector(s);
 const $$ = (s,r=document)=>[...r.querySelectorAll(s)];
+const cloneJson = value => window.structuredClone ? window.structuredClone(value) : JSON.parse(JSON.stringify(value));
 const esc = s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const paths={
  moon:'<path d="M20.8 13a9 9 0 0 1-9.8-9.8A9 9 0 1 0 20.8 13Z"/>',
@@ -184,14 +185,14 @@ function models(){
 function render(){sidebar();if(S.view==='home')home();else if(S.view==='archive')archive();else if(S.view==='detail')detail();else models();$('#player').classList.toggle('hidden',S.view!=='detail');if(S.view!=='detail')$('#audio').pause();}
 function renderUploadStatus(){const el=$('#upload-status');if(el)el.innerHTML=S.uploading?`<div class="upload-progress">正在上传 ${esc(uploadName)} · ${uploadPercent}%<progress value="${uploadPercent}" max="100"></progress></div>`:'';}
 function collectProfile(){const form=$('#model-form');if(!form)return;const p=S.profileDrafts.find(x=>x.id===S.selectedProfile);for(const n of ['name','model','base_url','thinking','max_tokens','api_key'])p[n]=form.elements[n].value;if($('#profile-default').checked)S.config.default_profile=p.id;}
-async function saveProfiles(){collectProfile();S.config=await api('/api/config',{method:'POST',body:JSON.stringify({profiles:S.profileDrafts,default_profile:S.config.default_profile})});S.profileDrafts=structuredClone(S.config.profiles);S.profile=S.config.default_profile;toast('模型连接已保存');render();}
+async function saveProfiles(){collectProfile();S.config=await api('/api/config',{method:'POST',body:JSON.stringify({profiles:S.profileDrafts,default_profile:S.config.default_profile})});S.profileDrafts=cloneJson(S.config.profiles);S.profile=S.config.default_profile;toast('模型连接已保存');render();}
 async function testModel(button){collectProfile();const p=S.profileDrafts.find(x=>x.id===S.selectedProfile);button.disabled=true;button.innerHTML='<i class="spinner"></i>正在测试';$('#test-result').innerHTML='';try{const result=await api('/api/models/test',{method:'POST',body:JSON.stringify(p)});$('#test-result').innerHTML=result.ok?`<div class="test-result">连接成功 · ${esc(result.model)} · ${result.seconds} 秒</div>`:`<div class="test-result error">${esc(result.error)}</div>`;}catch(e){$('#test-result').innerHTML=`<div class="test-result error">${esc(e.message)}</div>`;}finally{button.disabled=false;button.innerHTML=icon('plug')+'测试连接';}}
 async function fetchList(){const params=new URLSearchParams();if(S.view==='archive'){if(S.search)params.set('q',S.search);if(S.filter!=='all')params.set('status',S.filter);}const result=await api('/api/recordings?'+params);S.items=result.items;S.counts=result.counts;const badge=$('#archive-count');if(badge)badge.textContent=S.counts.total||0;return result;}
 async function route(){
  const hash=location.hash.replace(/^#\/?/,'');const match=hash.match(/^record\/([a-f0-9]{32})$/);
  const previous=S.view;S.view=match?'detail':['archive','models'].includes(hash)?hash:'home';S.id=match?match[1]:null;S.version=null;S.editing=false;
  if(S.view!=='archive'){S.batchMode=false;S.selected.clear();}
- if(S.view==='models'&&previous!=='models')S.profileDrafts=structuredClone(S.config.profiles);
+ if(S.view==='models'&&previous!=='models')S.profileDrafts=cloneJson(S.config.profiles);
  if(S.view==='detail'){
   try{const r=await api('/api/recordings/'+S.id);if(S.id!==r.id)return;S.detail=r;S.tab='analysis';S.transcriptQuery='';}catch(e){toast(e.message,true);go('archive');return;}
  }
@@ -245,7 +246,7 @@ function updatePlayer(){const a=$('#audio'),length=Number.isFinite(a.duration)?a
 function seekTo(t){const a=$('#audio');if(!a.src){toast('录音还在准备，请稍等');return;}a.currentTime=Math.max(0,Number(t));a.play().catch(()=>toast('这段音频暂时无法播放',true));updatePlayer();}
 function confirmDialog(title,message,action,label='确认'){const root=$('#modal-root');root.innerHTML=`<div class="modal-backdrop"><div class="modal" role="dialog" aria-modal="true" aria-labelledby="confirm-title"><h2 id="confirm-title">${esc(title)}</h2><p>${esc(message)}</p><div class="modal-actions"><button class="btn btn-secondary" id="modal-cancel">取消</button><button class="btn btn-danger" id="modal-confirm">${esc(label)}</button></div></div></div>`;$('#modal-cancel').onclick=()=>root.innerHTML='';$('#modal-confirm').onclick=async()=>{root.innerHTML='';try{await action();}catch(e){toast(e.message,true);}};$('#modal-cancel').focus();}
 async function reanalyze(){const r=S.detail,profile=$('#detail-profile').value,template=$('#detail-template').value;await api(`/api/recordings/${r.id}/analyze`,{method:'POST',body:JSON.stringify({profile_id:profile,template})});S.detail=await api('/api/recordings/'+r.id);S.version=null;S.tab='analysis';detail();toast('已开始处理，已有转写会直接复用');}
-async function saveTranscript(){const r=S.detail,segments=structuredClone(r.transcript);$$('textarea[data-transcript-index]').forEach(n=>segments[Number(n.dataset.transcriptIndex)].text=n.value);S.detail=await api('/api/recordings/'+r.id,{method:'PATCH',body:JSON.stringify({transcript:segments})});S.editing=false;detail();toast('校对已保存，可重新分析以更新结果');}
+async function saveTranscript(){const r=S.detail,segments=cloneJson(r.transcript);$$('textarea[data-transcript-index]').forEach(n=>segments[Number(n.dataset.transcriptIndex)].text=n.value);S.detail=await api('/api/recordings/'+r.id,{method:'PATCH',body:JSON.stringify({transcript:segments})});S.editing=false;detail();toast('校对已保存，可重新分析以更新结果');}
 document.addEventListener('click',async e=>{
  const nav=e.target.closest('[data-nav]');if(nav){go(nav.dataset.nav);return;}
  const selection=e.target.closest('.record-select');if(selection)return;
@@ -303,4 +304,4 @@ $('#audio').addEventListener('timeupdate',updatePlayer);$('#audio').addEventList
 $('#seek').addEventListener('input',e=>{const a=$('#audio');if(Number.isFinite(a.duration))a.currentTime=e.target.value/1000*a.duration;});
 $('#speed').onclick=()=>{const a=$('#audio'),rates=[1,1.25,1.5,1.75,2,.75];a.playbackRate=rates[(rates.indexOf(a.playbackRate)+1)%rates.length];$('#speed').textContent=a.playbackRate+'×';};
 window.addEventListener('hashchange',()=>route().catch(e=>toast(e.message,true)));
-(async()=>{try{S.config=await api('/api/config');S.profile=S.config.default_profile;S.selectedProfile=S.profile;S.profileDrafts=structuredClone(S.config.profiles);await route();tick();}catch(e){$('#main').innerHTML=`<div class="empty-state"><strong>听桥暂时无法打开</strong><p>${esc(e.message)}</p><button class="btn btn-primary" id="reload-app">重新连接</button></div>`;$('#reload-app').onclick=()=>location.reload();}})();
+(async()=>{try{S.config=await api('/api/config');S.profile=S.config.default_profile;S.selectedProfile=S.profile;S.profileDrafts=cloneJson(S.config.profiles);await route();tick();}catch(e){$('#main').innerHTML=`<div class="empty-state"><strong>听桥暂时无法打开</strong><p>${esc(e.message)}</p><button class="btn btn-primary" id="reload-app">重新连接</button></div>`;$('#reload-app').onclick=()=>location.reload();}})();
