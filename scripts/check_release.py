@@ -7,7 +7,7 @@ import sys
 ROOT = Path(__file__).resolve().parent.parent
 PRIVATE_DIRS = {'data', 'logs', 'runtime', 'models', '.venv', '.cache', 'recordings', 'recycle', 'browser', '__pycache__'}
 PRIVATE_NAMES = {'models.json', 'credentials.json', 'secrets.json'}
-BLOCKED_SUFFIXES = {'.m4a', '.mp3', '.wav', '.flac', '.ogg', '.aac', '.mp4', '.webm', '.opus', '.wma', '.amr', '.aif', '.aiff', '.onnx', '.exe', '.dll', '.zip', '.7z', '.db', '.pem', '.key', '.pfx', '.p12', '.pyc'}
+BLOCKED_SUFFIXES = {'.m4a', '.mp3', '.wav', '.flac', '.ogg', '.aac', '.mp4', '.webm', '.opus', '.wma', '.amr', '.aif', '.aiff', '.onnx', '.exe', '.dll', '.zip', '.7z', '.db', '.pem', '.key', '.pfx', '.p12', '.pyc', '.lnk'}
 PATTERNS = {
     'provider API key': re.compile(r'\b(?:ark-[A-Za-z0-9-]{20,}|sk-(?:proj-)?[A-Za-z0-9_-]{24,})'),
     'GitHub token': re.compile(r'\b(?:gh[pousr]_[A-Za-z0-9]{25,}|github_pat_[A-Za-z0-9_]{30,})'),

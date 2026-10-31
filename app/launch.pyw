@@ -39,6 +39,22 @@ def ready():
         return False
 
 
+def windows_identity(timeout=0, shortcuts=False):
+    if sys.platform != 'win32':
+        return
+    try:
+        from windows_shell import prepare_shortcuts, update_running_windows
+        if shortcuts:
+            prepare_shortcuts(ROOT, python_executable())
+        if not shortcuts or timeout:
+            update_running_windows(ROOT, python_executable(), timeout)
+    except OSError as exc:
+        logs = ROOT / 'logs'
+        logs.mkdir(exist_ok=True)
+        with (logs / 'launcher.log').open('a', encoding='utf-8') as out:
+            out.write(f'Taskbar integration: {exc}\n')
+
+
 def focus_windows_app():
     if sys.platform != 'win32':
         return False
@@ -52,13 +68,14 @@ def focus_windows_app():
         if user32.IsWindowVisible(hwnd):
             text = ctypes.create_unicode_buffer(user32.GetWindowTextLengthW(hwnd) + 1)
             user32.GetWindowTextW(hwnd, text, len(text))
-            if '听桥 · 录音识别与分析' in text.value:
+            if text.value == '听桥 · 录音识别与分析':
                 found.append(hwnd)
         return True
 
     user32.EnumWindows(callback_type(find), 0)
     if not found:
         return False
+    windows_identity()
     user32.ShowWindow(found[0], 9)
     user32.SetForegroundWindow(found[0])
     return True
@@ -67,6 +84,7 @@ def focus_windows_app():
 def main():
     if sys.platform not in ('win32', 'darwin'):
         raise SystemExit('当前支持 Windows 和 macOS。')
+    windows_identity(shortcuts=True)
     if not ready():
         logs = ROOT / 'logs'
         logs.mkdir(exist_ok=True)
@@ -92,6 +110,7 @@ def main():
         if os.environ.get('TINGQIAO_DEBUG') == '1':
             args += ['--remote-debugging-port=19332', '--remote-debugging-address=127.0.0.1']
         subprocess.Popen(args, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, **process_options())
+        windows_identity(timeout=15)
     else:
         webbrowser.open(URL)
 
