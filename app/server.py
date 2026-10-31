@@ -1,10 +1,7 @@
 from __future__ import annotations
 
 import asyncio
-import base64
 import contextlib
-import ctypes
-from ctypes import wintypes
 import hashlib
 import json
 import mimetypes
@@ -31,6 +28,7 @@ os.environ['PYTHONIOENCODING'] = 'utf-8'
 from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile
 from fastapi.responses import FileResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
+from platform_support import protect_secret, unprotect_secret, forget_secret, server_lock
 
 DATA = ROOT / 'data'
 RECORDINGS = DATA / 'recordings'
@@ -78,35 +76,6 @@ def initialize_db():
 
 initialize_db()
 
-class Blob(ctypes.Structure):
-    _fields_ = [('cbData', wintypes.DWORD), ('pbData', ctypes.POINTER(ctypes.c_ubyte))]
-
-def protect_secret(text: str) -> str:
-    if not text:
-        return ''
-    raw = text.encode('utf-8')
-    buf = (ctypes.c_ubyte * len(raw)).from_buffer_copy(raw)
-    incoming, outgoing = Blob(len(raw), buf), Blob()
-    if not ctypes.windll.crypt32.CryptProtectData(ctypes.byref(incoming), '听桥模型凭据', None, None, None, 1, ctypes.byref(outgoing)):
-        raise RuntimeError('Windows 无法加密模型密钥')
-    try:
-        return base64.b64encode(ctypes.string_at(outgoing.pbData, outgoing.cbData)).decode('ascii')
-    finally:
-        ctypes.windll.kernel32.LocalFree(outgoing.pbData)
-
-def unprotect_secret(sealed: str) -> str:
-    if not sealed:
-        return ''
-    raw = base64.b64decode(sealed)
-    buf = (ctypes.c_ubyte * len(raw)).from_buffer_copy(raw)
-    incoming, outgoing = Blob(len(raw), buf), Blob()
-    if not ctypes.windll.crypt32.CryptUnprotectData(ctypes.byref(incoming), None, None, None, None, 1, ctypes.byref(outgoing)):
-        raise RuntimeError('无法读取模型密钥，请在模型设置中重新填写')
-    try:
-        return ctypes.string_at(outgoing.pbData, outgoing.cbData).decode('utf-8')
-    finally:
-        ctypes.windll.kernel32.LocalFree(outgoing.pbData)
-
 CONFIG_LOCK = threading.RLock()
 DEFAULT_CONFIG = {
     'default_profile': 'ark',
@@ -142,8 +111,6 @@ def resolve_profile(profile_id, override=None):
         for field in ('name', 'base_url', 'model', 'thinking', 'max_tokens'):
             if field in override:
                 p[field] = override[field]
-        if override.get('api_key'):
-            p['secret'] = protect_secret(override['api_key'])
     base = str(p.get('base_url', '')).strip().rstrip('/')
     if base.endswith('/chat/completions'):
         base = base[:-len('/chat/completions')]
@@ -155,7 +122,8 @@ def resolve_profile(profile_id, override=None):
     p['base_url'] = base
     p['model'] = str(p['model']).strip()
     p['max_tokens'] = min(32000, max(512, int(p.get('max_tokens') or 6000)))
-    p['api_key'] = unprotect_secret(p.get('secret', ''))
+    # Testing a new connection must not create persistent Keychain entries.
+    p['api_key'] = (override or {}).get('api_key') or unprotect_secret(p.get('secret', ''))
     return p
 
 def redact(message, key=''):
@@ -528,7 +496,7 @@ async def local_only(request: Request, call_next):
 
 @app.get('/api/health')
 def health():
-    return {'app':'听桥','version':'1.0.2','local_asr_ready':(ROOT/'models/sensevoice/model.int8.onnx').exists()}
+    return {'app':'听桥','version':'1.1.0','local_asr_ready':(ROOT/'models/sensevoice/model.int8.onnx').exists(),'platform':sys.platform}
 
 @app.get('/api/config')
 def get_config():
@@ -548,13 +516,26 @@ async def set_config(request: Request):
             resolved=resolve_profile(pid,item)
         except (ValueError, RuntimeError) as exc:
             raise HTTPException(400,str(exc))
-        profiles.append({k:resolved[k] for k in ('name','base_url','model','thinking','max_tokens')} | {'id':pid,'secret':resolved.get('secret','')})
+        profiles.append({k:resolved[k] for k in ('name','base_url','model','thinking','max_tokens')} | {'id':pid,'secret':resolved.get('secret',''),'_new_key':item.get('api_key') or ''})
     if not profiles or len(profiles)>20:
         raise HTTPException(400,'请保留1至20个模型配置')
     default=body.get('default_profile')
     if default not in [p['id'] for p in profiles]:
         default=profiles[0]['id']
-    save_config({'default_profile':default,'profiles':profiles})
+    created=[]
+    try:
+        for p in profiles:
+            key=p.pop('_new_key')
+            if key:
+                p['secret']=protect_secret(key)
+                created.append(p['secret'])
+        save_config({'default_profile':default,'profiles':profiles})
+    except Exception:
+        for sealed in created:forget_secret(sealed)
+        raise HTTPException(400,'无法保存模型密钥或配置，请确认系统凭据存储可用且数据目录可写') from None
+    retained={p['secret'] for p in profiles}
+    for p in old_map.values():
+        if p.get('secret') and p['secret'] not in retained:forget_secret(p['secret'])
     return public_config()
 
 @app.post('/api/models/test')
@@ -732,8 +713,8 @@ def index():
     return FileResponse(ROOT/'app/static/index.html')
 
 if __name__=='__main__':
-    server_mutex = ctypes.windll.kernel32.CreateMutexW(None, True, 'Local\\TingqiaoAudioAnalysisServer')
-    if ctypes.windll.kernel32.GetLastError() == 183:
-        raise SystemExit(0)
-    import uvicorn
-    uvicorn.run(app,host='127.0.0.1',port=19331,access_log=False,log_level='warning')
+    with server_lock(DATA/'server.lock') as acquired:
+        if not acquired:
+            raise SystemExit(0)
+        import uvicorn
+        uvicorn.run(app,host='127.0.0.1',port=19331,access_log=False,log_level='warning')

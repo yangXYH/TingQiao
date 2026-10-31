@@ -1,4 +1,4 @@
-# Versions used by the Windows / Python 3.12 installation.
+# Python 3.12; Intel macOS uses a compatible ONNX Runtime wheel.
 fastapi==0.162.0
 uvicorn==0.54.0
 python-multipart==0.0.32
@@ -6,4 +6,6 @@ sherpa-onnx==2.0.1
 faster-whisper==1.2.1
 av==19.0.2
 numpy==2.5.4
-onnxruntime==1.31.1
+onnxruntime==1.31.1; sys_platform != "darwin" or platform_machine != "x86_64"
+onnxruntime==1.23.2; sys_platform == "darwin" and platform_machine == "x86_64"
+keyring==25.7.0; sys_platform == "darwin"

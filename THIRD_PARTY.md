@@ -16,5 +16,6 @@
 | FastAPI | 本地 HTTP 服务 | https://github.com/fastapi/fastapi |
 | Uvicorn | ASGI 服务运行 | https://github.com/encode/uvicorn |
 | python-multipart | 上传文件解析 | https://github.com/Kludex/python-multipart |
+| keyring | macOS 原生钥匙串访问 | https://github.com/jaraco/keyring |
 
 SenseVoice 模型下载和运行说明见 [sherpa-onnx 官方文档](https://k2-fsa.github.io/sherpa/onnx/sense-voice/pretrained.html)。下载工具会保留模型包中的 `LICENSE`，请进一步阅读其指向的上游模型使用条款。听桥源码的 MIT License 不改变第三方模型或服务的许可范围。

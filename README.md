@@ -4,7 +4,7 @@
 
 听桥是一款本地优先的录音转写与 AI 分析工具。拖入音频，即可自动转写、生成会议纪要或面试复盘，并归档保存。录音在本机转写，生成分析时仅将转写文字发送至你选择的模型服务。
 
-这是 Windows 桌面使用场景的源码版本，界面通过本机浏览器窗口运行。当前不支持 macOS/Linux，且不包含录音采集、线上会议接入等功能。
+这是面向 Windows 和 macOS 的源码版本，界面通过本机浏览器窗口运行。支持 Apple Silicon 和 Intel Mac；当前不包含 Linux 适配、录音采集或线上会议接入。
 
 ## 功能
 
@@ -21,7 +21,28 @@
 
 ## 从源码运行
 
-需要 Windows 10/11、64 位 Python 3.12（安装时勾选 Python Launcher），以及 Edge 或 Chrome。首次安装依赖和语音模型需要网络；配置好模型文件后，语音转写可离线运行。云端分析需要网络与用户自己的模型权限或额度。
+支持 Windows 10/11、macOS 14 及以上版本，需要 64 位 Python 3.12。首次安装依赖和语音模型需要网络；配置好模型文件后，语音转写可离线运行。云端分析需要网络与用户自己的模型权限或额度。
+
+### macOS
+
+先安装 [Python 3.12](https://www.python.org/downloads/macos/)；使用 Homebrew 时也可运行 `brew install python@3.12`。Apple Silicon 请选择原生 arm64 Python，避免通过 Rosetta 混用 Intel 环境。
+
+```bash
+git clone https://github.com/yangXYH/TingQiao.git
+cd TingQiao
+bash setup.sh
+./启动听桥.command
+```
+
+也可双击 `setup.command` 完成首次安装，再双击 `启动听桥.command` 启动。若通过 ZIP 下载后没有执行权限，在终端运行 `chmod +x setup.command 启动听桥.command`。
+
+有 Chrome 或 Edge 时优先使用独立应用窗口；否则在默认浏览器（如 Safari）中打开。首次保存或读取 API 密钥时，macOS 可能提示授权 Python 访问登录钥匙串，请按需允许。密钥只存入系统钥匙串，配置文件仅保存随机引用。
+
+若模型已手动放置，执行 `bash setup.sh --skip-model`。直接启动后端可使用 `.venv/bin/python app/server.py`，再打开 <http://127.0.0.1:19331>。当前提供源码启动方式，不包含签名、公证的 `.app` 或 `.dmg` 安装包。
+
+### Windows
+
+安装 Python 时勾选 Python Launcher，浏览器建议使用 Edge 或 Chrome。
 
 ```powershell
 git clone https://github.com/yangXYH/TingQiao.git
@@ -73,14 +94,15 @@ models/sensevoice/
 
 | 位置 | 内容 |
 | --- | --- |
-| `data/models.json` | 模型连接信息与 Windows DPAPI 加密的 API 密钥 |
+| `data/models.json` | 模型连接信息，以及 Windows 加密密钥或 macOS 钥匙串引用 |
 | `data/archive.sqlite3` | 录音档案、转写文字和分析历史 |
 | `data/recordings/` | 原始音频、回放音频、转写和分析文件 |
 | `data/recycle/` | 从档案移除的录音文件，需自行管理清理 |
 | `data/browser/` | 本机应用浏览器配置 |
 | `logs/` | 服务运行日志 |
 
-- API 密钥在本机通过 Windows DPAPI 加密保存，通常仅同一 Windows 用户可解密。加密配置仍属于敏感数据，请勿公开。
+- Windows 密钥通过 DPAPI 加密保存，通常仅同一 Windows 用户可解密；macOS 密钥存入登录钥匙串，配置中仅保留随机引用。配置文件仍属于私有数据，请勿公开。
+- 在 Windows 和 Mac 之间迁移录音档案后，需要在目标电脑重新填写 API 密钥；不导出系统凭据。
 - 使用云端分析时，转写文字与请求所需凭据会发送到你配置的服务商。请确认你有权处理和传输相应内容。
 - 服务默认仅监听 `127.0.0.1:19331`，适合个人本机使用；当前不提供多用户登录或公网部署能力。
 - 分享或开源时只分享源码，不要打包整个已使用的应用目录。详见 [SECURITY.md](SECURITY.md)。
@@ -95,7 +117,9 @@ scripts/download_model.py 公开语音模型下载工具
 scripts/check_release.py 提交内容检查工具
 requirements.txt        Python 依赖
 setup.ps1               Windows 安装脚本
-启动听桥.vbs             桌面窗口启动入口
+setup.sh / setup.command macOS 安装入口
+启动听桥.vbs             Windows 启动入口
+启动听桥.command         macOS 启动入口
 ```
 
 ## 开发与贡献
@@ -108,6 +132,8 @@ python scripts/check_release.py
 ```
 
 检查脚本会检查 **Git 暂存区**，阻止常见密钥、私有数据路径和大型运行文件进入提交。它只能作为辅助，提交前仍需检查文件列表与差异。
+
+平台与凭据存储测试：`python -m unittest discover -s tests -v`。GitHub Actions 会在 Windows、Apple Silicon Mac 和 Intel Mac 上安装依赖并运行测试；不会使用维护者的录音或模型密钥。
 
 ## 许可证
 

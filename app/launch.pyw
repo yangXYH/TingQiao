@@ -1,4 +1,3 @@
-import ctypes
 import json
 import os
 from pathlib import Path
@@ -8,49 +7,94 @@ import time
 import urllib.request
 import webbrowser
 
-root=Path(__file__).resolve().parent.parent
-url='http://127.0.0.1:19331/'
+ROOT = Path(__file__).resolve().parent.parent
+URL = 'http://127.0.0.1:19331/'
+
+
+def process_options():
+    return {'creationflags': 0x08000000} if sys.platform == 'win32' else {'start_new_session': True}
+
+
+def python_executable():
+    candidates = (ROOT / '.venv/Scripts/pythonw.exe', ROOT / 'runtime/python/pythonw.exe') if sys.platform == 'win32' else (ROOT / '.venv/bin/python',)
+    return next((p for p in candidates if p.exists()), Path(sys.executable))
+
+
+def find_browser():
+    if sys.platform == 'darwin':
+        names = ('Google Chrome.app/Contents/MacOS/Google Chrome', 'Microsoft Edge.app/Contents/MacOS/Microsoft Edge', 'Chromium.app/Contents/MacOS/Chromium')
+        candidates = [folder / name for folder in (Path('/Applications'), Path.home() / 'Applications') for name in names]
+    elif sys.platform == 'win32':
+        candidates = [Path(os.environ.get('ProgramFiles(x86)', 'C:/Program Files (x86)')) / 'Microsoft/Edge/Application/msedge.exe', Path(os.environ.get('ProgramFiles', 'C:/Program Files')) / 'Microsoft/Edge/Application/msedge.exe', Path(os.environ.get('ProgramFiles', 'C:/Program Files')) / 'Google/Chrome/Application/chrome.exe']
+    else:
+        candidates = []
+    return next((p for p in candidates if p.exists()), None)
+
+
 def ready():
     try:
-        with urllib.request.urlopen(url+'api/health',timeout=1) as r:
-            return json.load(r).get('app')=='听桥'
+        with urllib.request.urlopen(URL + 'api/health', timeout=1) as response:
+            return json.load(response).get('app') == '听桥'
     except Exception:
         return False
 
-if not ready():
-    logs=root/'logs';logs.mkdir(exist_ok=True)
-    python=next((p for p in (root/'.venv/Scripts/pythonw.exe',root/'runtime/python/pythonw.exe') if p.exists()),Path(sys.executable))
-    with (logs/'server.log').open('a',encoding='utf-8') as out,(logs/'server-error.log').open('a',encoding='utf-8') as err:
-        p=subprocess.Popen([str(python),str(root/'app/server.py')],cwd=str(root),stdout=out,stderr=err,creationflags=0x08000000)
-        (root/'data/server.pid').write_text(str(p.pid),'ascii')
-    for _ in range(100):
-        if ready():break
-        time.sleep(.2)
-    else:
-        ctypes.windll.user32.MessageBoxW(None,'听桥服务未能启动。请检查 logs 文件夹中的 server-error.log。','听桥',16)
-        raise SystemExit(1)
 
-# Reuse the existing application window when the shortcut is opened again.
-found=[]
-callback_type=ctypes.WINFUNCTYPE(ctypes.c_bool,ctypes.c_void_p,ctypes.c_void_p)
-def find_window(hwnd,_):
-    if ctypes.windll.user32.IsWindowVisible(hwnd):
-        length=ctypes.windll.user32.GetWindowTextLengthW(hwnd)
-        text=ctypes.create_unicode_buffer(length+1)
-        ctypes.windll.user32.GetWindowTextW(hwnd,text,length+1)
-        if '听桥 · 录音识别与分析' in text.value:
-            found.append(hwnd)
+def focus_windows_app():
+    if sys.platform != 'win32':
+        return False
+    import ctypes
+    from ctypes import wintypes
+    user32 = ctypes.windll.user32
+    callback_type = ctypes.WINFUNCTYPE(wintypes.BOOL, wintypes.HWND, wintypes.LPARAM)
+    found = []
+
+    def find(hwnd, _):
+        if user32.IsWindowVisible(hwnd):
+            text = ctypes.create_unicode_buffer(user32.GetWindowTextLengthW(hwnd) + 1)
+            user32.GetWindowTextW(hwnd, text, len(text))
+            if '听桥 · 录音识别与分析' in text.value:
+                found.append(hwnd)
+        return True
+
+    user32.EnumWindows(callback_type(find), 0)
+    if not found:
+        return False
+    user32.ShowWindow(found[0], 9)
+    user32.SetForegroundWindow(found[0])
     return True
-ctypes.windll.user32.EnumWindows(callback_type(find_window),0)
-if found:
-    ctypes.windll.user32.ShowWindow(found[0],9)
-    ctypes.windll.user32.SetForegroundWindow(found[0])
-    raise SystemExit(0)
 
-browser=next((p for p in [Path(os.environ.get('ProgramFiles(x86)','C:/Program Files (x86)'))/'Microsoft/Edge/Application/msedge.exe',Path(os.environ.get('ProgramFiles','C:/Program Files'))/'Microsoft/Edge/Application/msedge.exe',Path(os.environ.get('ProgramFiles','C:/Program Files'))/'Google/Chrome/Application/chrome.exe'] if p.exists()),None)
-if browser:
-    args=[str(browser),'--app='+url,'--user-data-dir='+str(root/'data/browser'),'--no-first-run','--no-default-browser-check','--disable-sync','--disable-extensions','--disable-features=msEdgeSidebarV2,msEdgeFirstRunExperience,msImplicitSignin','--window-size=1400,930']
-    if os.environ.get('TINGQIAO_DEBUG')=='1':args+=['--remote-debugging-port=19332','--remote-debugging-address=127.0.0.1']
-    subprocess.Popen(args,creationflags=0x08000000)
-else:
-    webbrowser.open(url)
+
+def main():
+    if sys.platform not in ('win32', 'darwin'):
+        raise SystemExit('当前支持 Windows 和 macOS。')
+    if not ready():
+        logs = ROOT / 'logs'
+        logs.mkdir(exist_ok=True)
+        (ROOT / 'data').mkdir(exist_ok=True)
+        with (logs / 'server.log').open('a', encoding='utf-8') as out, (logs / 'server-error.log').open('a', encoding='utf-8') as err:
+            process = subprocess.Popen([str(python_executable()), str(ROOT / 'app/server.py')], cwd=str(ROOT), stdout=out, stderr=err, **process_options())
+            (ROOT / 'data/server.pid').write_text(str(process.pid), 'ascii')
+        for _ in range(100):
+            if ready():
+                break
+            if process.poll() is not None:
+                if ready():
+                    break
+                raise SystemExit('听桥服务未能启动，请查看 logs/server-error.log。')
+            time.sleep(.2)
+        else:
+            raise SystemExit('听桥服务启动超时，请查看 logs/server-error.log。')
+    if focus_windows_app():
+        return
+    browser = find_browser()
+    if browser:
+        args = [str(browser), '--app=' + URL, '--user-data-dir=' + str(ROOT / 'data/browser'), '--no-first-run', '--no-default-browser-check', '--disable-sync', '--disable-extensions', '--disable-features=msEdgeSidebarV2,msEdgeFirstRunExperience,msImplicitSignin', '--window-size=1400,930']
+        if os.environ.get('TINGQIAO_DEBUG') == '1':
+            args += ['--remote-debugging-port=19332', '--remote-debugging-address=127.0.0.1']
+        subprocess.Popen(args, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, **process_options())
+    else:
+        webbrowser.open(URL)
+
+
+if __name__ == '__main__':
+    main()
